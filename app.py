@@ -16,8 +16,8 @@ from pydantic import BaseModel
 from browser_use import Agent
 try:
     from browser_use.llm import ChatOpenAI
-except ImportError:  # older/newer layout
-    from browser_use import ChatOpenAI
+except ImportError:  # browser-use 0.3.x uses LangChain chat models
+    from langchain_openai import ChatOpenAI
 
 LLM = ChatOpenAI(
     model=os.getenv("LLM_MODEL", "glm-4.6"),
