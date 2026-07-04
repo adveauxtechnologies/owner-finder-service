@@ -63,7 +63,11 @@ async def find_owner(r: Req):
     if svc and r.token != svc:
         raise HTTPException(status_code=401, detail="bad token")
 
-    agent = Agent(task=TASK.format(business=r.business, state=r.state), llm=LLM)
+    agent = Agent(
+        task=TASK.format(business=r.business, state=r.state),
+        llm=LLM,
+        enable_memory=False,  # mem0 needs an OpenAI embeddings key we don't use
+    )
     try:
         history = await agent.run(max_steps=int(os.getenv("MAX_STEPS", "30")))
         final = history.final_result() or ""
