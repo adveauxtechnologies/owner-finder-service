@@ -67,6 +67,7 @@ async def find_owner(r: Req):
         task=TASK.format(business=r.business, state=r.state),
         llm=LLM,
         enable_memory=False,  # mem0 needs an OpenAI embeddings key we don't use
+        use_vision=False,  # Z.AI coding endpoint is text-only, rejects screenshots
     )
     try:
         history = await agent.run(max_steps=int(os.getenv("MAX_STEPS", "30")))
