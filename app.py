@@ -134,11 +134,26 @@ async def solve_cloudflare(page: Page) -> ActionResult:
         return ActionResult(extracted_content=f"solve_cloudflare error: {e}")
 
 
+# Direct SoS business-search URLs: lets initial_actions skip the first LLM step entirely
+STATE_SOS_URLS = {
+    "MA": "https://corp.sec.state.ma.us/corpweb/CorpSearch/CorpSearch.aspx",
+    "NH": "https://quickstart.sos.nh.gov/online/BusinessInquire",
+    "CT": "https://service.ct.gov/business/s/onlinebusinesssearch",
+    "RI": "https://business.sos.ri.gov/CorpWeb/CorpSearch/CorpSearch.aspx",
+    "NY": "https://apps.dos.ny.gov/publicInquiry/",
+    "FL": "https://search.sunbiz.org/Inquiry/CorporationSearch/ByName",
+    "TX": "https://comptroller.texas.gov/taxes/franchise/account-status/search",
+    "CA": "https://bizfileonline.sos.ca.gov/search/business",
+}
+
+
 def _build_profile(user_data_dir: str) -> BrowserProfile:
     return BrowserProfile(
         headless=False,  # headed → the CapSolver extension works; xvfb provides the display
         user_data_dir=user_data_dir,  # non-None → launch_persistent_context → extensions load
         window_size={"width": 1920, "height": 1080},
+        minimum_wait_page_load_time=0.25,
+        wait_between_actions=0.2,
         args=[
             f"--disable-extensions-except={EXT_DIR}",
             f"--load-extension={EXT_DIR}",
@@ -186,7 +201,7 @@ async def find_owner(r: Req):
 
     tmp = tempfile.mkdtemp(prefix="bu-")
     session = BrowserSession(browser_profile=_build_profile(tmp))
-    agent = Agent(
+    kw = dict(
         task=TASK.format(business=r.business, state=r.state, city=r.city or "an unknown city"),
         llm=LLM,
         controller=controller,
@@ -194,6 +209,14 @@ async def find_owner(r: Req):
         enable_memory=False,  # mem0 needs an OpenAI embeddings key we don't use
         use_vision=False,     # Z.AI coding endpoint is text-only, rejects screenshots
     )
+    sos_url = STATE_SOS_URLS.get(r.state.upper().strip())
+    if sos_url:
+        # open the registry before the agent's first LLM call — saves a whole step
+        kw["initial_actions"] = [{"go_to_url": {"url": sos_url}}]
+    try:
+        agent = Agent(**kw, flash_mode=True)  # skip eval/thinking output for speed
+    except Exception:
+        agent = Agent(**kw)  # older browser-use without flash_mode
     final = ""
     try:
         history = await asyncio.wait_for(agent.run(max_steps=MAX_STEPS), timeout=RUN_TIMEOUT)
