@@ -51,14 +51,15 @@ FIELDS = [
     "residential_address", "commercial_address", "source", "confidence",
 ]
 
-TASK = """Find the real human owner of the US business "{business}" in state {state}.
+TASK = """Find the human owner/manager of the US business "{business}" in state {state} from the OFFICIAL {state} Secretary of State business registry. Work FAST: return as soon as you have the name + the best address from the registry. Do NOT go to Google or the business website to "verify" — a downstream skip-trace step confirms the home + phone, so extra web research just wastes time.
 
 Steps:
-1. Go to the {state} Secretary of State business-entity search (search the web for it if needed) and look up the business. Try close variants of the name (with/without LLC, INC).
-2. From the filing, capture: officers/members/managers/organizer names, the registered agent, the registered/principal office address.
-3. The owner is usually the managing member / organizer / president. If the registered agent is a person (not a service company like "Registered Agents Inc"), they are often the owner of small businesses.
-4. A residential address is often the organizer's or registered agent's address on small LLC filings, or search the owner's name + city on the open web for their home address. Only report a residential address you actually found — NEVER guess.
-5. If a page shows a captcha (reCAPTCHA / Cloudflare Turnstile / hCaptcha), just WAIT a few seconds — an extension auto-solves it. If a Cloudflare Turnstile widget is stuck, call the solve_cloudflare action once. If a site hard-blocks you ("you have been blocked" / 403), move on to another source (OpenCorporates.com, Bizapedia, the business's own website).
+1. Go to the {state} Secretary of State business-entity search and look up the business. Try close name variants (with/without LLC, INC).
+2. Open the entity's detail page (and its latest ANNUAL REPORT if it's one click away — annual reports often list officer/director RESIDENCE addresses). Capture the managers/members/officers/organizer names, the registered/resident agent, and every address shown.
+3. Pick the owner: the managing member / organizer / president / manager. If the registered/resident agent is an individual PERSON (not a service company such as "CT Corporation", "Registered Agents Inc", "Northwest", "LegalZoom", "Incfile"), that person is usually a primary owner of a small business — use them.
+4. RESIDENTIAL ADDRESS — report an address in residential_address when the agent/officer is an individual PERSON AND the address looks residential: a house, apartment, condo, or a street address with a unit/apt/suite-in-a-residential-building number (e.g. "133 Seaport Blvd Unit 812", "11542 Clearwater St"). On a small owner-operated business the resident agent's / officer's address IS usually their home — so DO report it, you do NOT need to confirm it on the web. Only leave residential_address empty if the ONLY addresses are a commercial registered-agent service company, an obvious business storefront/plaza/office tower, or a PO box. Put clearly-commercial addresses (principal office, storefront) in commercial_address. Never invent an address.
+5. Return IMMEDIATELY once you have the owner name and the registry address. Do not keep browsing to double-check.
+6. If a page shows a captcha, WAIT a few seconds (an extension auto-solves it); if a Cloudflare Turnstile is stuck call solve_cloudflare once; if a site hard-blocks you (403), try OpenCorporates.com or Bizapedia for the same entity.
 
 When done, your final answer must be ONLY this JSON (empty strings for anything not found):
 {{"business_name": "{business}", "owner_name": "", "owner_title": "", "residential_address": "", "commercial_address": "", "source": "", "confidence": "low|medium|high"}}"""
