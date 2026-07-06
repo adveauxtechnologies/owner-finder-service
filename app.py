@@ -51,11 +51,11 @@ FIELDS = [
     "residential_address", "commercial_address", "source", "confidence",
 ]
 
-TASK = """Find the human owner/manager of the US business "{business}" in state {state} from the OFFICIAL {state} Secretary of State business registry. Work FAST: return as soon as you have the name + the best address from the registry. Do NOT go to Google or the business website to "verify" — a downstream skip-trace step confirms the home + phone, so extra web research just wastes time.
+TASK = """Find the human owner/manager of the US business "{business}" located in {city}, {state} from the OFFICIAL {state} Secretary of State business registry. Work FAST: return as soon as you have the name + the best address from the registry. Do NOT go to Google or the business website to "verify" — a downstream skip-trace step confirms the home + phone, so extra web research just wastes time.
 
 Steps:
 1. Go to the {state} Secretary of State business-entity search and look up the business. IMPORTANT search strategy: search the CORE legal name only — strip any location/branch suffix after a dash (e.g. for "SEAPORT MEDSPA - South Boston" search "SEAPORT MEDSPA"). Use the DEFAULT entity-name search mode ("begins with" / entity name), NOT full-text search. If no results, try close variants (with/without LLC, INC).
-2. Open the entity's detail page (and its latest ANNUAL REPORT if it's one click away — annual reports often list officer/director RESIDENCE addresses). Capture the managers/members/officers/organizer names, the registered/resident agent, and every address shown.
+2. If the search returns MULTIPLE entities, pick the one whose listed address is in or nearest to {city}, {state} (or whose name matches the branch suffix). Open the entity's detail page (and its latest ANNUAL REPORT if it's one click away — annual reports often list officer/director RESIDENCE addresses). Capture the managers/members/officers/organizer names, the registered/resident agent, and every address shown.
 3. Pick the owner: the managing member / organizer / president / manager. If the registered/resident agent is an individual PERSON (not a service company such as "CT Corporation", "Registered Agents Inc", "Northwest", "LegalZoom", "Incfile"), that person is usually a primary owner of a small business — use them.
 4. RESIDENTIAL ADDRESS — report an address in residential_address when the agent/officer is an individual PERSON AND the address looks residential: a house, apartment, condo, or a street address with a unit/apt/suite-in-a-residential-building number (e.g. "133 Seaport Blvd Unit 812", "11542 Clearwater St"). On a small owner-operated business the resident agent's / officer's address IS usually their home — so DO report it, you do NOT need to confirm it on the web. Only leave residential_address empty if the ONLY addresses are a commercial registered-agent service company, an obvious business storefront/plaza/office tower, or a PO box. Put clearly-commercial addresses (principal office, storefront) in commercial_address. Never invent an address.
 5. Return IMMEDIATELY once you have the owner name and the registry address. Do not keep browsing to double-check.
@@ -157,6 +157,7 @@ app = FastAPI()
 class Req(BaseModel):
     business: str
     state: str
+    city: str = ""
     token: str = ""
 
 
@@ -174,7 +175,7 @@ async def find_owner(r: Req):
     tmp = tempfile.mkdtemp(prefix="bu-")
     session = BrowserSession(browser_profile=_build_profile(tmp))
     agent = Agent(
-        task=TASK.format(business=r.business, state=r.state),
+        task=TASK.format(business=r.business, state=r.state, city=r.city or "an unknown city"),
         llm=LLM,
         controller=controller,
         browser_session=session,
