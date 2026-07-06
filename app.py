@@ -65,7 +65,19 @@ Steps:
 When done, your final answer must be ONLY this JSON (empty strings for anything not found):
 {{"business_name": "{business}", "owner_name": "", "owner_title": "", "residential_address": "", "commercial_address": "", "source": "", "confidence": "low|medium|high"}}"""
 
-controller = Controller()
+class OwnerOut(BaseModel):
+    business_name: str = ""
+    owner_name: str = ""
+    owner_title: str = ""
+    residential_address: str = ""
+    commercial_address: str = ""
+    source: str = ""
+    confidence: str = ""
+
+
+# output_model forces the done action to take these fields as typed parameters,
+# so the LLM can't return an empty text answer (glm-5-turbo did exactly that)
+controller = Controller(output_model=OwnerOut)
 
 
 @controller.action("Solve a Cloudflare Turnstile widget on the current page and inject the token")
