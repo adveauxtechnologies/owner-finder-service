@@ -40,7 +40,7 @@ MAX_STEPS = int(os.getenv("MAX_STEPS", "12"))
 RUN_TIMEOUT = int(os.getenv("RUN_TIMEOUT", "540"))
 
 LLM = ChatOpenAI(
-    model=os.getenv("LLM_MODEL", "glm-5.2"),
+    model=os.getenv("LLM_MODEL", "glm-4.5v"),
     base_url=os.getenv("LLM_BASE_URL", "https://api.z.ai/api/coding/paas/v4"),
     api_key=os.environ["ZAI_API_KEY"],
     temperature=0.2,
@@ -258,7 +258,7 @@ async def find_owner(r: Req):
         controller=controller,
         browser_session=session,
         enable_memory=False,  # mem0 needs an OpenAI embeddings key we don't use
-        use_vision=False,     # Z.AI coding endpoint is text-only, rejects screenshots
+        use_vision=True,      # GLM-4.5V (LLM_MODEL) reads screenshots — needed to navigate JS SPAs like CA bizfileonline
     )
     sos_url = STATE_SOS_URLS.get(r.state.upper().strip())
     if sos_url:
