@@ -39,10 +39,14 @@ CAP_KEY = os.getenv("CAPSOLVER_KEY", "")
 MAX_STEPS = int(os.getenv("MAX_STEPS", "12"))
 RUN_TIMEOUT = int(os.getenv("RUN_TIMEOUT", "540"))
 
+# gpt-4.1-mini: has vision AND clean function-calling that browser-use can parse.
+# GLM vision models (glm-4.5v) break browser-use's response parser ("Could not parse
+# response. Extra data"), and the GLM text models can't read screenshots — so vision
+# owner-finding needs an OpenAI/Claude-class model. Provider is swappable via env.
 LLM = ChatOpenAI(
-    model=os.getenv("LLM_MODEL", "glm-4.5v"),
-    base_url=os.getenv("LLM_BASE_URL", "https://api.z.ai/api/coding/paas/v4"),
-    api_key=os.environ["ZAI_API_KEY"],
+    model=os.getenv("LLM_MODEL", "gpt-4.1-mini"),
+    base_url=os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
+    api_key=(os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("ZAI_API_KEY", "")),
     temperature=0.2,
 )
 
