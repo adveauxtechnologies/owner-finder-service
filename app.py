@@ -60,8 +60,8 @@ Steps:
 4. RESIDENTIAL ADDRESS — report an address in residential_address when the agent/officer is an individual PERSON AND the address looks residential: a house, apartment, condo, or a street address with a unit/apt/suite-in-a-residential-building number (e.g. "133 Seaport Blvd Unit 812", "11542 Clearwater St"). On a small owner-operated business the resident agent's / officer's address IS usually their home — so DO report it, you do NOT need to confirm it on the web. Only leave residential_address empty if the ONLY addresses are a commercial registered-agent service company, an obvious business storefront/plaza/office tower, or a PO box. Put clearly-commercial addresses (principal office, storefront) in commercial_address. Never invent an address.
 5. Return IMMEDIATELY once you have the owner name and the registry address. Do not keep browsing to double-check.
 5b. NEVER create, write, or read files (no todo.md, no results.md — file actions waste 20-40 seconds each). Keep findings in memory and put the final JSON directly in your done() answer. Where the page allows it, combine multiple actions in one step (e.g. type into the search box AND click Search together).
-6. If a page shows a captcha, WAIT a few seconds (an extension auto-solves it); if a Cloudflare Turnstile is stuck call solve_cloudflare once; if a site hard-blocks you (403), try OpenCorporates.com or Bizapedia for the same entity.
-7. NO-RESULTS FALLBACK (registries only — do NOT hunt Google, Facebook, Yelp, or business websites): if the SoS entity search returns NO match after trying name variants, the business is likely a sole proprietorship / DBA that is not in the corporate registry. Check these OTHER STRUCTURED REGISTRIES in order, stopping as soon as one gives an owner name: (a) OpenCorporates.com and Bizapedia (broader entity databases); (b) the {state} assumed-name / DBA (fictitious business name) registry, which is where sole proprietors file their owner name; (c) for a LICENSED TRADE (locksmith, electrician, plumber, HVAC, contractor, cosmetology, etc.) the {state} occupational LICENSE registry — these list the license holder's real name (e.g. in Texas the DPS TOPS / Private Security registry at tops.portal.texas.gov lists locksmith owners). Use ONLY these registry/database sites; never a general web search. If none of them return a name, leave owner_name empty and set confidence low.
+6. If a page shows a captcha, WAIT a few seconds (an extension auto-solves it); if a Cloudflare Turnstile is stuck call solve_cloudflare once; if the {state} site hard-blocks you (403) even after that, give up on this business and return empty — do NOT go to any other site.
+7. NO-RESULTS FALLBACK ({state} official registries ONLY — never Google, Facebook, Yelp, business websites, OpenCorporates, Bizapedia, or ANY other state's website): if the {state} SoS entity search returns NO match after trying name variants, the business is likely a sole proprietorship / DBA not in the corporate registry. Check these OTHER {state} STATE registries in order, stopping as soon as one gives an owner name: (a) the {state} assumed-name / DBA (fictitious business name) registry, where sole proprietors file their owner name; (b) for a LICENSED TRADE (locksmith, electrician, plumber, HVAC, contractor, cosmetology, etc.) the {state} occupational LICENSE registry — these list the license holder's real name (e.g. in Texas the DPS TOPS / Private Security registry at tops.portal.texas.gov lists locksmith owners). Use ONLY official {state} registry sites — stay within {state}. If none return a name, leave owner_name empty, set confidence low, and STOP — do not search any further sites.
 
 When done, your final answer must be ONLY this JSON (empty strings for anything not found):
 {{"business_name": "{business}", "owner_name": "", "owner_title": "", "residential_address": "", "commercial_address": "", "source": "", "confidence": "low|medium|high"}}"""
@@ -135,16 +135,64 @@ async def solve_cloudflare(page: Page) -> ActionResult:
         return ActionResult(extracted_content=f"solve_cloudflare error: {e}")
 
 
-# Direct SoS business-search URLs: lets initial_actions skip the first LLM step entirely
+# Direct SoS business-search URLs: lets initial_actions skip the first LLM step
+# entirely. All 50 states + DC. A few are JS single-page apps (AZ, WA, CA, DC, UT,
+# MI, PA, ...) — the headed browser renders them fine even though a raw GET would
+# see only the app shell. Five flagged as of Jul 2026 (may fail → business skips):
+#   HI (portal mid-migration to dcca.hawaii.gov), LA (coraweb legacy lookup),
+#   DC (SPA), GA (WAF), OR (bot-block). Confirm in a browser if leads cluster there.
 STATE_SOS_URLS = {
-    "MA": "https://corp.sec.state.ma.us/corpweb/CorpSearch/CorpSearch.aspx",
-    "NH": "https://quickstart.sos.nh.gov/online/BusinessInquire",
-    "CT": "https://service.ct.gov/business/s/onlinebusinesssearch",
-    "RI": "https://business.sos.ri.gov/CorpWeb/CorpSearch/CorpSearch.aspx",
-    "NY": "https://apps.dos.ny.gov/publicInquiry/",
-    "FL": "https://search.sunbiz.org/Inquiry/CorporationSearch/ByName",
-    "TX": "https://comptroller.texas.gov/taxes/franchise/account-status/search",
+    "AL": "https://arc-sos.state.al.us/CGI/CORPNAME.MBR/INPUT",
+    "AK": "https://www.commerce.alaska.gov/cbp/main/search/entities",
+    "AZ": "https://ecorp.azcc.gov/EntitySearch/Index",
+    "AR": "https://www.ark.org/corp-search/",
     "CA": "https://bizfileonline.sos.ca.gov/search/business",
+    "CO": "https://www.sos.state.co.us/biz/BusinessEntityCriteriaExt.do",
+    "CT": "https://service.ct.gov/business/s/onlinebusinesssearch",
+    "DE": "https://icis.corp.delaware.gov/ecorp/entitysearch/namesearch.aspx",
+    "DC": "https://corponline.dlcp.dc.gov/",
+    "FL": "https://search.sunbiz.org/Inquiry/CorporationSearch/ByName",
+    "GA": "https://ecorp.sos.ga.gov/businesssearch",
+    "HI": "https://hbe.dcca.hawaii.gov/",
+    "ID": "https://sosbiz.idaho.gov/search/business",
+    "IL": "https://apps.ilsos.gov/businessentitysearch/",
+    "IN": "https://bsd.sos.in.gov/publicbusinesssearch",
+    "IA": "https://sos.iowa.gov/search/business/search.aspx",
+    "KS": "https://www.sos.ks.gov/eforms/BusinessEntity/Search.aspx",
+    "KY": "https://sosbes.sos.ky.gov/BusSearchNProfile/search.aspx",
+    "LA": "https://coraweb.sos.la.gov/commercialsearch/commercialsearch.aspx",
+    "ME": "https://apps3.web.maine.gov/nei-sos-icrs/ICRS?MainPage=x",
+    "MD": "https://egov.maryland.gov/businessexpress/entitysearch",
+    "MA": "https://corp.sec.state.ma.us/corpweb/CorpSearch/CorpSearch.aspx",
+    "MI": "https://mibusinessregistry.lara.state.mi.us/search/business",
+    "MN": "https://mblsportal.sos.mn.gov/Business/Search",
+    "MS": "https://corp.sos.ms.gov/corp/portal/c/page/corpBusinessIdSearch/portal.aspx",
+    "MO": "https://www.sos.mo.gov/BusinessEntity/soskb/csearch.asp",
+    "MT": "https://biz.sosmt.gov/search",
+    "NE": "https://www.nebraska.gov/sos/corp/corpsearch.cgi?nav=search",
+    "NV": "https://esos.nv.gov/EntitySearch/OnlineEntitySearch",
+    "NH": "https://quickstart.sos.nh.gov/online/BusinessInquire",
+    "NJ": "https://www.njportal.com/DOR/BusinessNameSearch/Search/BusinessName",
+    "NM": "https://enterprise.sos.nm.gov/search/business",
+    "NY": "https://apps.dos.ny.gov/publicInquiry/",
+    "NC": "https://www.sosnc.gov/online_services/search/by_title/_Business_Registration",
+    "ND": "https://firststop.sos.nd.gov/search/business",
+    "OH": "https://businesssearch.ohiosos.gov/",
+    "OK": "https://www.sos.ok.gov/corp/corpInquiryFind.aspx",
+    "OR": "https://egov.sos.state.or.us/br/pkg_web_name_srch_inq.login",
+    "PA": "https://file.dos.pa.gov/search/business",
+    "RI": "https://business.sos.ri.gov/CorpWeb/CorpSearch/CorpSearch.aspx",
+    "SC": "https://businessfilings.sc.gov/BusinessFiling/Entity/Search",
+    "SD": "https://sosenterprise.sd.gov/BusinessServices/Business/FilingSearch.aspx",
+    "TN": "https://tnbear.tn.gov/Ecommerce/FilingSearch.aspx",
+    "TX": "https://comptroller.texas.gov/taxes/franchise/account-status/search",
+    "UT": "https://businessregistration.utah.gov/EntitySearch/OnlineEntitySearch",
+    "VT": "https://bizfilings.vermont.gov/online/BusinessInquire/BusinessSearch",
+    "VA": "https://cis.scc.virginia.gov/EntitySearch/Index",
+    "WA": "https://ccfs.sos.wa.gov/#/AdvancedSearch",
+    "WV": "https://apps.wv.gov/sos/businessentitysearch/",
+    "WI": "https://apps.dfi.wi.gov/apps/CorpSearch/Search.aspx",
+    "WY": "https://wyobiz.wyo.gov/business/filingsearch.aspx",
 }
 
 
