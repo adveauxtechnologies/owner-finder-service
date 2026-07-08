@@ -67,29 +67,43 @@ def _inline_refs(node, root, depth=0):
         return [_inline_refs(v, root, depth + 1) for v in node]
     return node
 
+def _inline_tool(tool):
+    try:
+        fn = tool.get("function", tool) if isinstance(tool, dict) else tool
+        params = fn.get("parameters")
+        if isinstance(params, dict):
+            before = json.dumps(params)
+            had_ref = '"$ref"' in before
+            fn["parameters"] = _inline_refs(params, params)
+            after = json.dumps(fn["parameters"])
+            ref_left = '"$ref"' in after
+            print(f"[ref-inline] {fn.get('name')}: bytes {len(before)}->{len(after)} "
+                  f"had_ref={had_ref} ref_left={ref_left}", flush=True)
+    except Exception as e:
+        print(f"[ref-inline] skipped: {e}", flush=True)
+    return tool
+
 def _patch_openai_tool_converter():
     import langchain_core.utils.function_calling as _fc
-    _orig = _fc.convert_to_openai_tool
-
-    def _patched(*args, **kwargs):
-        tool = _orig(*args, **kwargs)
-        try:
-            fn = tool.get("function", tool) if isinstance(tool, dict) else tool
-            params = fn.get("parameters")
-            if isinstance(params, dict) and ("$defs" in params or "definitions" in params):
-                fn["parameters"] = _inline_refs(params, params)
-        except Exception as e:  # never break the agent over the patch
-            print(f"[ref-inline] skipped: {e}", flush=True)
-        return tool
-
-    _fc.convert_to_openai_tool = _patched
-    # langchain_openai binds the name at import time — repoint it too
-    try:
-        import langchain_openai.chat_models.base as _b
-        if hasattr(_b, "convert_to_openai_tool"):
-            _b.convert_to_openai_tool = _patched
-    except Exception:
-        pass
+    for _name in ("convert_to_openai_tool", "convert_to_openai_function"):
+        _orig = getattr(_fc, _name, None)
+        if _orig is None:
+            continue
+        def _make(orig, is_tool):
+            def _patched(*args, **kwargs):
+                out = orig(*args, **kwargs)
+                return _inline_tool(out) if is_tool else (_inline_tool({"function": out})["function"])
+            return _patched
+        _patched = _make(_orig, _name == "convert_to_openai_tool")
+        setattr(_fc, _name, _patched)
+        for _modname in ("langchain_openai.chat_models.base", "langchain_core.language_models.chat_models"):
+            try:
+                _m = __import__(_modname, fromlist=["x"])
+                if hasattr(_m, _name):
+                    setattr(_m, _name, _patched)
+            except Exception:
+                pass
+    print("[ref-inline] converter patched", flush=True)
 
 _patch_openai_tool_converter()
 # --- end glm-4.6v $ref fix ---------------------------------------------------
