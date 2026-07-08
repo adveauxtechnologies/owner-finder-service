@@ -49,6 +49,10 @@ LLM = ChatOpenAI(
     api_key=(os.getenv("LLM_API_KEY") or os.getenv("ZAI_API_KEY") or os.getenv("OPENAI_API_KEY", "")),
     temperature=0.2,
 )
+# browser-use gates function_calling behind a live probe that GLM's structured-output
+# test trips on, even though the Z.AI endpoint returns clean tool_calls. Mark the LLM
+# pre-verified so Agent skips the probe and honours tool_calling_method="function_calling".
+setattr(LLM, "_verified_api_keys", True)
 
 FIELDS = [
     "business_name", "owner_name", "owner_title",
