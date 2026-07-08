@@ -77,6 +77,8 @@ def _inline_tool(tool):
             fn["parameters"] = _inline_refs(params, params)
             after = json.dumps(fn["parameters"])
             ref_left = '"$ref"' in after
+            if fn.get("name") == "AgentOutput":
+                globals()["LAST_AGENTOUTPUT_SCHEMA"] = fn["parameters"]
             print(f"[ref-inline] {fn.get('name')}: bytes {len(before)}->{len(after)} "
                   f"had_ref={had_ref} ref_left={ref_left}", flush=True)
     except Exception as e:
@@ -324,6 +326,11 @@ class Req(BaseModel):
 @app.get("/health")
 async def health():
     return {"ok": True, "ext": os.path.isfile(os.path.join(EXT_DIR, "manifest.json"))}
+
+
+@app.get("/schema")
+async def schema():
+    return globals().get("LAST_AGENTOUTPUT_SCHEMA", {"note": "no run yet"})
 
 
 @app.post("/find-owner")
