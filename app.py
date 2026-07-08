@@ -173,8 +173,17 @@ class OwnerOut(BaseModel):
 
 
 # output_model forces the done action to take these fields as typed parameters,
-# so the LLM can't return an empty text answer (glm-5-turbo did exactly that)
-controller = Controller(output_model=OwnerOut)
+# so the LLM can't return an empty text answer (glm-5-turbo did exactly that).
+# exclude_actions: trim browser-use's 24-action union down to the ~8 we actually need.
+# A smaller action union makes glm-4.6v far more consistent at serialising the `action`
+# field correctly (it garbles the full 24-variant union ~half the time).
+EXCLUDE_ACTIONS = [
+    "save_pdf", "switch_tab", "open_tab", "close_tab", "get_ax_tree",
+    "get_dropdown_options", "select_dropdown_option", "drag_drop",
+    "write_file", "append_file", "read_file", "search_google",
+    "go_back", "wait", "send_keys", "scroll_to_text",
+]
+controller = Controller(output_model=OwnerOut, exclude_actions=EXCLUDE_ACTIONS)
 
 
 @controller.action("Solve a Cloudflare Turnstile widget on the current page and inject the token")
@@ -367,6 +376,12 @@ async def find_owner(r: Req):
         # step returns empty. This hint (verified 2026-07-08) makes it emit the correct
         # array-of-single-key-objects shape. Cheap and model-agnostic.
         extend_system_message=ACTION_FORMAT_HINT,
+        # glm-4.6v produces a valid AgentOutput ~50-70% of calls; browser-use retries a
+        # failed step in place (failures don't advance the step counter), so a high
+        # consecutive-failure budget lets it push through the flaky calls instead of
+        # aborting after the default 3. retry_delay low so retries aren't slow.
+        max_failures=20,
+        retry_delay=1,
     )
     sos_url = STATE_SOS_URLS.get(r.state.upper().strip())
     if sos_url:
