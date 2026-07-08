@@ -366,7 +366,11 @@ async def find_owner(r: Req):
         controller=controller,
         browser_session=session,
         enable_memory=False,  # mem0 needs an OpenAI embeddings key we don't use
-        use_vision=True,      # glm-4.6v (LLM_MODEL) reads screenshots — needed to navigate JS SPAs like CA bizfileonline
+        # Vision OFF: with a 375KB screenshot in-context glm-4.6v's structured-output
+        # compliance collapses to ~0% (20/20 AgentOutput validation failures). Text-only
+        # (DOM elements only) keeps context small enough that it emits valid actions —
+        # this matches the original working design (glm-5.2, use_vision=False).
+        use_vision=(os.getenv("USE_VISION", "0").lower() in ("1", "true", "yes")),
         # Force the real OpenAI tools API. glm-4.6v returns clean structured tool_calls
         # via tools=[...] but leaks its native <tool_call> pseudo-XML into content under
         # browser-use's default json_mode → "Could not parse response. Extra data".
