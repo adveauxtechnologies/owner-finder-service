@@ -34,6 +34,66 @@ try:
 except ImportError:  # browser-use 0.3.x uses LangChain chat models
     from langchain_openai import ChatOpenAI
 
+# --- glm-4.6v $ref fix -------------------------------------------------------
+# glm-4.6v drives browser-use fine EXCEPT its function-calling parser does not
+# dereference JSON-Schema $ref. browser-use's AgentOutput schema encodes the
+# 24-action union as $ref/$defs, so GLM can't see the action shapes and returns
+# empty/invalid tool args ("5 validation errors for AgentOutput ... action
+# Field required"). Verified 2026-07-08: inline schema -> correct action; $ref
+# schema -> hallucinated action. Fix: inline every $ref before the tool schema
+# is sent, so GLM sees fully-expanded property definitions.
+def _inline_refs(node, root, depth=0):
+    if depth > 60:
+        return node
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/"):
+            target = root
+            for part in ref[2:].split("/"):
+                if isinstance(target, dict):
+                    target = target.get(part, {})
+                else:
+                    target = {}
+            resolved = _inline_refs(target, root, depth + 1)
+            extra = {k: _inline_refs(v, root, depth + 1) for k, v in node.items() if k != "$ref"}
+            if extra and isinstance(resolved, dict):
+                merged = dict(resolved)
+                merged.update(extra)
+                return merged
+            return resolved
+        return {k: _inline_refs(v, root, depth + 1) for k, v in node.items()
+                if k not in ("$defs", "definitions")}
+    if isinstance(node, list):
+        return [_inline_refs(v, root, depth + 1) for v in node]
+    return node
+
+def _patch_openai_tool_converter():
+    import langchain_core.utils.function_calling as _fc
+    _orig = _fc.convert_to_openai_tool
+
+    def _patched(*args, **kwargs):
+        tool = _orig(*args, **kwargs)
+        try:
+            fn = tool.get("function", tool) if isinstance(tool, dict) else tool
+            params = fn.get("parameters")
+            if isinstance(params, dict) and ("$defs" in params or "definitions" in params):
+                fn["parameters"] = _inline_refs(params, params)
+        except Exception as e:  # never break the agent over the patch
+            print(f"[ref-inline] skipped: {e}", flush=True)
+        return tool
+
+    _fc.convert_to_openai_tool = _patched
+    # langchain_openai binds the name at import time — repoint it too
+    try:
+        import langchain_openai.chat_models.base as _b
+        if hasattr(_b, "convert_to_openai_tool"):
+            _b.convert_to_openai_tool = _patched
+    except Exception:
+        pass
+
+_patch_openai_tool_converter()
+# --- end glm-4.6v $ref fix ---------------------------------------------------
+
 EXT_DIR = os.getenv("EXT_DIR", "/opt/capext")
 CAP_KEY = os.getenv("CAPSOLVER_KEY", "")
 MAX_STEPS = int(os.getenv("MAX_STEPS", "12"))
