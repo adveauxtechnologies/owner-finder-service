@@ -263,6 +263,10 @@ async def find_owner(r: Req):
         browser_session=session,
         enable_memory=False,  # mem0 needs an OpenAI embeddings key we don't use
         use_vision=True,      # glm-4.6v (LLM_MODEL) reads screenshots — needed to navigate JS SPAs like CA bizfileonline
+        # Force the real OpenAI tools API. glm-4.6v returns clean structured tool_calls
+        # via tools=[...] but leaks its native <tool_call> pseudo-XML into content under
+        # browser-use's default json_mode → "Could not parse response. Extra data".
+        tool_calling_method="function_calling",
     )
     sos_url = STATE_SOS_URLS.get(r.state.upper().strip())
     if sos_url:
