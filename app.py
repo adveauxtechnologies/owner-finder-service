@@ -79,8 +79,9 @@ def _inline_tool(tool):
             ref_left = '"$ref"' in after
             if fn.get("name") == "AgentOutput":
                 globals()["LAST_AGENTOUTPUT_SCHEMA"] = fn["parameters"]
-            print(f"[ref-inline] {fn.get('name')}: bytes {len(before)}->{len(after)} "
-                  f"had_ref={had_ref} ref_left={ref_left}", flush=True)
+            if had_ref:  # only log when the patch actually did something
+                print(f"[ref-inline] {fn.get('name')}: bytes {len(before)}->{len(after)} "
+                      f"ref_left={ref_left}", flush=True)
     except Exception as e:
         print(f"[ref-inline] skipped: {e}", flush=True)
     return tool
@@ -134,6 +135,15 @@ FIELDS = [
     "business_name", "owner_name", "owner_title",
     "residential_address", "commercial_address", "source", "confidence",
 ]
+
+# glm-4.6v mis-serialises browser-use's `action` union as a string unless told the shape.
+ACTION_FORMAT_HINT = (
+    "OUTPUT FORMAT (critical): the `action` field of AgentOutput MUST be a JSON array of "
+    "objects, where each object has exactly ONE action key mapping to its parameter object, "
+    'e.g. [{"input_text": {"index": 5, "text": "Franklin Truck Parts"}}] or '
+    '[{"click_element_by_index": {"index": 6}}]. NEVER write an action as a string, a tuple, '
+    'or "[name, {...}]"; always use the {"action_name": {params}} object form.'
+)
 
 TASK = """Find the human owner/manager of the US business "{business}" located in {city}, {state} from the OFFICIAL {state} Secretary of State business registry. Work FAST: return as soon as you have the name + the best address from the registry. Do NOT go to Google or the business website to "verify" — a downstream skip-trace step confirms the home + phone, so extra web research just wastes time.
 
@@ -352,6 +362,11 @@ async def find_owner(r: Req):
         # via tools=[...] but leaks its native <tool_call> pseudo-XML into content under
         # browser-use's default json_mode → "Could not parse response. Extra data".
         tool_calling_method="function_calling",
+        # With browser-use's 24-action union, glm-4.6v serialises the `action` field as a
+        # malformed string ("[input_text, {...}]") → AgentOutput validation fails and every
+        # step returns empty. This hint (verified 2026-07-08) makes it emit the correct
+        # array-of-single-key-objects shape. Cheap and model-agnostic.
+        extend_system_message=ACTION_FORMAT_HINT,
     )
     sos_url = STATE_SOS_URLS.get(r.state.upper().strip())
     if sos_url:
